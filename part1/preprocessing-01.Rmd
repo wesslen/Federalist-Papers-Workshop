@@ -1,0 +1,192 @@
+---
+title: "FederalistPapers-part1"
+author: "Ryan Wesslen"
+date: "August 7, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE)
+```
+
+## Step 1: Set working directory and set up libraries 
+
+The first step is to set the working directory using the setwd command. The working directory is the folder that R will point to to either import new files (e.g. load a csv) or export new files.
+
+```{r}
+setwd("~/Dropbox/Federalist-Papers-Workshop")  #Linux
+#setwd("C:/Users/rwesslen/Dropbox/Federalist-Papers-Workshop") #Windows
+```
+
+The next step is to install the R libraries (optional - only necessary if this is your first time). The install packages are commented out (#). To remove the comment, highlight the text and press CTRL + SHIFT + C.
+
+Most of the libraries are downloaded from CRAN. CRAN is an open-source archive of R packages. Packages can be installed through CRAN with the "install.packages()" command.
+
+Note, some packages (e.g. old or very new) sometimes may not be available on CRAN. In such cases, additional steps may be required to download them.
+
+```{r}
+#install.packages("quanteda")
+library(quanteda)
+```
+
+## Step 2: Load & explore the data and partition for training & test datasets
+
+First, I load the csv file into my working directory. In this step, the file is converted to an R dataframe.
+
+```{r}
+papers <- read.csv("../data/federalist.csv", stringsAsFactors = F)
+```
+
+The next steps explore the size of the dataset, remove some redundant text ("To the People..." heading on all papers) and create an index to identify papers that will be in the training dataset (known Madison and Hamilton papers) and the test dataset (the 12 disputed papers). 
+
+```{r}
+dim(papers)
+
+table(papers$author)
+
+#		train/test: limit to Hamilton/Mad documents (drop Jay and Ham&Madison papers)
+train <- which(papers$auth=="HAMILTON" | papers$auth=="MADISON")
+length(train)	# 65
+
+test <- which(papers$auth=="DISPUTED")
+length(test)	# 12
+```
+
+## Step 3: Data Pre-Processing
+
+The next step starts the process of converting the string/characters of the text into word count vectors (columns) that will be used to create the Document-Term and Term-Document Matrices.
+
+For our analysis, we will leverage the `quanteda` package. If you're new to the package, check out [this great vignette](https://cran.r-project.org/web/packages/quanteda/vignettes/quickstart.html).
+
+```{r}
+library(quanteda)
+
+# remove "To the People of the State of New York <l>"
+papers$text <- substring(papers$text,45)
+
+# remove html tags
+tags <- c("<c>","<p>","<S>","<l>","<q>","<d>","<Q>")
+for (i in tags){
+  papers$text <- gsub(i," ",papers$text)
+}
+
+# build the corpus
+myCorpus <- corpus(papers$text)
+
+# add in the attributes about the papers (number, author, train/test flag)
+docvars(myCorpus, "Number") <- papers$number
+docvars(myCorpus, "Author") <- papers$author
+
+# summarize the documents
+summary(myCorpus, 5)
+```
+
+Let's plot the number of tokens (word count) for each of the papers.
+
+```{r}
+tokenInfo <- summary(myCorpus)
+
+if (require(ggplot2))
+    ggplot(data=tokenInfo, aes(x=Number, y=Tokens, group=1)) + geom_line() + geom_point()
+```
+
+Let's now start the pre-processing. We'll use the corpus to create a dfm (document-feature matrix) including removing common stop words.
+
+```{r}
+stopWords <- c("will","one","two","may","less", "well","might","without","small","single",
+"several","however","must","number","part","upon","consider","particular","place","true","shall","often",
+"former","latter","want","can","everything","every","different","either","yet","made","now","publius",
+"therefore","first","second","third","though","another","found","within","even","far","just","also",
+"said","ever","three","four","still","little")
+
+myDfm <- dfm(myCorpus, ignoredFeatures = c(stopwords("english"),stopWords), stem = F)
+
+topfeatures(myDfm, 20)
+```
+
+## Step 4: Exploratory Analysis with Word Cloud, Frequency Plot and Clustering
+
+The first step creates a word cloud.
+
+```{r}
+library(RColorBrewer)
+
+plot(myDfm, max.words = 100, colors = brewer.pal(6, "Dark2"), scale = c(8, .5))			
+```
+
+Remember, our task is to predict the disputed Federalist Papers. One exploratory technique we can use is the *comparison* word cloud, which compares the relative frequency of words by the author.
+
+To create a comparison word cloud, we need to create a grouped dfm using the `group` parameter.
+
+```{r}
+myGroupDfm <- dfm(myCorpus, groups = "Author", ignoredFeatures = c(stopwords("english"),stopWords), stem = F)
+
+plot(myGroupDfm, comparison = T, max.words = 100, colors = brewer.pal(6, "Dark2"), scale = c(8, .5))	
+```
+
+Next, I analyze word associations for a sample of words. The "findAssocs" function will take a given word (e.g., "germanic") and given an association parameter (e.g., 0.85), and return the words that are in at least x% (association parameter) of the papers with the given word.
+
+To run this analysis, we'll need two non-CRAN packages. 
+
+```{r}
+## Non CRAN packages, choose "n" for updates or else it may update a lot of other packages
+#source("https://bioconductor.org/biocLite.R")
+#biocLite("graph")
+#biocLite("Rgraphviz")
+
+library(graph); library(Rgraphviz); 
+```
+
+So for example, the first call to the function will return all words that are in at least 85% of the papers that contain the word "germanic". This step is helpful because it can identify words that (1) tend to form topics/clusters and/or (2) words that make up a larger bigram or trigram entity structure.
+
+The plot provides words that (1) have a frequency larger than 200 and show correlations for words with at least a 25% association. This plot too is helpful for determining clusters and/or bigram/trigram structure for the most common words.
+
+```{r}
+DTM <- as.DocumentTermMatrix(myDfm)
+
+library(tm)
+# Word Associations
+findAssocs(DTM, "commerce", 0.7)
+findAssocs(DTM, "debt", 0.8)
+findAssocs(DTM, "slavery", 0.7)
+findAssocs(DTM, "montesquieu", 0.65)
+findAssocs(DTM, "germanic", 0.85)
+
+#		queries of co-occurences
+freq.terms <- findFreqTerms(DTM, lowfreq = 200)
+term.freq <- rowSums(as.matrix(DTM))
+term.freq <- subset(term.freq, term.freq >= 200)
+
+plot(DTM, term = freq.terms, corThreshold = 0.25, weighting = T)
+dev.off()
+```
+
+The next step uses [hiearchal clustering](https://en.wikipedia.org/wiki/Hierarchical_clustering) to identify clusters/patterns in words that tend to co-occur together.
+
+```{r}
+myDfm <- trim(myDfm, minCount=5, minDoc=3)
+# hierarchical clustering - get distances on normalized dfm
+myDistMat <- dist(as.matrix(weight(myDfm, "relFreq")))
+# hiarchical clustering the distance object
+myCluster <- hclust(myDistMat)
+# plot as a dendrogram
+plot(myCluster, xlab = "", sub = "", main = "Euclidean Distance on Normalized Token Frequency")
+```
+
+## Step 5: Additional Stop Words, Stemming and Bigrams
+
+As seen previously, the results are largely dominated by several words that are very frequent throughout the entire corpus (words like government or state). Worse, several of these words mean the same thing but are in different forms (e.g., government and governments). Also, several combination of words make up entities that don't mean the same when the words are separated (e.g. Great + Britain, or New + York). Without controlling for these complexities, initial text mining analysis can be vague. In order to improve our results, I rerun pre-processing steps to remove common stop words, stem words and add in bigrams into the analysis.
+
+After running these steps, rerun the visualizations and note the differences.
+
+```{r}
+# Additional Stop words
+stopWords <- c(stopWords,"federal","members","national","union","united","general","government","governments",
+"power","powers","state","states","people","constitution","constitutions")
+
+myDfm <- dfm(myCorpus, ignoredFeatures = c(stopwords("english"),stopWords), stem = T, ngrams = c(1,3))
+
+topfeatures(myDfm, 20)
+
+plot(myDfm, max.words = 100, colors = brewer.pal(6, "Dark2"), scale = c(8, .5))		
+```

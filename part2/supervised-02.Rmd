@@ -1,0 +1,139 @@
+---
+title: "FederalistPapers-part2"
+author: "Ryan Wesslen"
+date: "August 7, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE)
+```
+
+## Step 6: Rerun preparation steps.
+
+Let's rerun our initial steps. If you are manually running the chunks, you may not need to rerun this process.
+
+```{r}
+setwd("~/Dropbox/Federalist-Papers-Workshop")  #Linux
+#setwd("C:/Users/rwesslen/Dropbox/Federalist-Papers-Workshop") #Windows
+
+papers <- read.csv("./data/federalist.csv", stringsAsFactors = F)
+
+#		train/test: limit to Hamilton/Mad documents (drop Jay and Ham&Madison papers)
+train <- which(papers$auth=="HAMILTON" | papers$auth=="MADISON")
+length(train)	# 65
+
+test <- which(papers$auth=="DISPUTED")
+length(test)	# 12
+
+library(quanteda)
+
+# remove "To the People of the State of New York <l>"
+papers$text <- substring(papers$text,45)
+
+# remove html tags
+tags <- c("<c>","<p>","<S>","<l>","<q>","<d>","<Q>")
+for (i in tags){
+  papers$text <- gsub(i," ",papers$text)
+}
+
+# build the corpus
+myCorpus <- corpus(papers$text)
+
+# add in the attributes about the papers (number, author, train/test flag)
+docvars(myCorpus, "Number") <- papers$number
+docvars(myCorpus, "Author") <- papers$author
+
+# summarize the documents
+summary(myCorpus, 5)
+
+stopWords <- c("will","one","two","may","less", "well","might","without","small","single",
+"several","however","must","number","part","upon","consider","particular","place","true","shall","often",
+"former","latter","want","can","everything","every","different","either","yet","made","now","publius",
+"therefore","first","second","third","though","another","found","within","even","far","just","also",
+"said","ever","three","four","still","little","federal","members","national","union","united","general",
+"government","governments","power","powers","state","states","people","constitution","constitutions")
+
+myDfm <- dfm(myCorpus, ignoredFeatures = c(stopwords("english"),stopWords), stem = T, ngrams = c(1,3))
+myDfm <- trim(myDfm, minCount=5, minDoc=5)
+```
+
+## Step 7: Train Ridge Regression
+
+This part below we'll use ridge regression to determine what are the most "predictive" words for either Madison or Hamilton. This part uses material originally from [Pablo Barbera's EUI Text Workshop](https://github.com/pablobarbera/eui-text-workshop/blob/master/02-supervised/01-supervised.Rmd).
+
+```{r}
+hamilton.author <- ifelse(papers$author[train]=="HAMILTON",1,0)
+
+library(glmnet)
+require(doMC)
+registerDoMC(cores=3)
+ridge <- cv.glmnet(myDfm[train,], hamilton.author, 
+    family="binomial", alpha=0, nfolds=5, parallel=TRUE,
+    type.measure="deviance")
+plot(ridge)
+```
+
+This plots a range of lambda values to determine the most appropriate value to use.
+
+## Step 7: Model Evaluation
+
+Let's now predict the accuracy of the model on the training dataset.
+
+```{r}
+## function to compute accuracy
+accuracy <- function(ypred, y){
+    tab <- table(ypred, y)
+    return(sum(diag(tab))/sum(tab))
+}
+# function to compute precision
+precision <- function(ypred, y){
+    tab <- table(ypred, y)
+    return((tab[2,2])/(tab[2,1]+tab[2,2]))
+}
+# function to compute recall
+recall <- function(ypred, y){
+    tab <- table(ypred, y)
+    return(tab[2,2]/(tab[1,2]+tab[2,2]))
+}
+# computing predicted values
+preds <- predict(ridge, myDfm[train,], type="response") > mean(hamilton.author)
+# confusion matrix
+table(preds, hamilton.author)
+# performance metrics
+accuracy(preds, hamilton.author)
+precision(preds, hamilton.author)
+recall(preds, hamilton.author)
+```
+
+So we find that the model completely predicts the training dataset. Usually, we'd be more interested in the validation dataset accuracy; however, since we have so few training observations, we only consider the training dataset. Alternatively, we could use cross-validation methods (e.g., k-fold). For simplicity, we won't concern ourselves with this consideration. However, for more sophisticated research, it would strengthen the model's case by using cross-validation.
+
+We can now predict our out-of-sample (disputed) papers:
+
+```{r}
+disputed.papers <- predict(ridge, myDfm[test,], type="response") > mean(hamilton.author)
+
+disputed.papers <- ifelse(disputed.papers == 1, "HAMILTON", "MADISON")
+```
+
+These results imply that contrary to earlier research, that suggests all of the papers were written by Madison, our model predict four of the twelve papers are predicted to be written by Hamilton.
+
+```{r}
+# from the different values of lambda, let's pick the best one
+best.lambda <- which(ridge$lambda==ridge$lambda.min)
+beta <- ridge$glmnet.fit$beta[,best.lambda]
+head(beta)
+
+## identifying predictive features
+df <- data.frame(coef = as.numeric(beta),
+                word = names(beta), stringsAsFactors=F)
+
+df <- df[order(df$coef),]
+head(df[,c("coef", "word")], n=30)
+paste(df$word[1:30], collapse=", ")
+df <- df[order(df$coef, decreasing=TRUE),]
+head(df[,c("coef", "word")], n=30)
+paste(df$word[1:30], collapse=", ")
+```
+
+These plots show the top 30 words that the model predicts indicates Madison (first 30, i.e. most negative coefficient) or Hamilton (bottom 30, i.e. most positive coefficient).
