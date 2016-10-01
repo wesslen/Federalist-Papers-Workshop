@@ -94,10 +94,7 @@ Let's now start the pre-processing. We'll use the corpus to create a dfm (docume
 
 ```{r}
 stopWords <- c("will","one","two","may","less", "well","might","without","small","single",
-"several","however","must","number","part","upon","consider","particular","place","true","shall","often",
-"former","latter","want","can","everything","every","different","either","yet","made","now","publius",
-"therefore","first","second","third","though","another","found","within","even","far","just","also",
-"said","ever","three","four","still","little")
+"several","however","must","number","part","upon","consider","particular","place","true","shall","often","former","latter","want","can","everything","every","different","either","yet","made","now","publius","therefore","first","second","third","though","another","found","within","even","far","just","also","said","ever","three","four","still","little")
 
 myDfm <- dfm(myCorpus, ignoredFeatures = c(stopwords("english"),stopWords), stem = F)
 

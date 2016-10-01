@@ -1,0 +1,176 @@
+---
+title: "FederalistPapers-part3"
+author: "Ryan Wesslen"
+date: "October 2, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE)
+```
+
+## Step 10: Rerun preparation steps.
+
+Let's rerun our initial steps. If you are manually running the chunks, you may not need to rerun this process.
+
+```{r}
+setwd("~/Dropbox/Federalist-Papers-Workshop")  #Linux
+#setwd("C:/Users/rwesslen/Dropbox/Federalist-Papers-Workshop") #Windows
+
+papers <- read.csv("./data/federalist.csv", stringsAsFactors = F)
+
+#		train/test: limit to Hamilton/Mad documents (drop Jay and Ham&Madison papers)
+train <- which(papers$auth=="HAMILTON" | papers$auth=="MADISON")
+length(train)	# 65
+
+test <- which(papers$auth=="DISPUTED")
+length(test)	# 12
+
+library(quanteda)
+
+# remove "To the People of the State of New York <l>"
+papers$text <- substring(papers$text,45)
+
+# remove html tags
+tags <- c("<c>","<p>","<S>","<l>","<q>","<d>","<Q>")
+for (i in tags){
+  papers$text <- gsub(i," ",papers$text)
+}
+
+# build the corpus
+myCorpus <- corpus(papers$text)
+
+# add in the attributes about the papers (number, author, train/test flag)
+docvars(myCorpus, "Number") <- papers$number
+docvars(myCorpus, "Author") <- papers$author
+
+# summarize the documents
+summary(myCorpus, 5)
+
+stopWords <- c("will","one","two","may","less", "well","might","without","small","single", "several","however","must","number","part","upon","consider","particular","place","true","shall","often","former","latter","want","can","everything","every","different","either","yet","made","now","publius","therefore","first","second","third","though","another","found","within","even","far","just","also","said","ever","three","four","still","little","federal","members","national","union","united","general","government","governments","power","powers","state","states","people","constitution","constitutions")
+
+myDfm <- dfm(myCorpus, ignoredFeatures = c(stopwords("english"),stopWords), stem = F, ngrams = c(1,3))
+
+myDfm <- trim(myDfm, minCount=10, minDoc=5)
+```
+
+## Step 11: Run LDA (Topic Modeling)
+
+In this exercise, we're going to run latent Dirichlet allocation (LDA), which is the workhorse topic model.
+
+```{r, results = 'hide'}
+# we now export to a format that we can run the topic model with
+dtm <- convert(myDfm, to="topicmodels")
+```
+
+```{r}
+# install.packages("topicmodels")
+library(topicmodels)
+
+#Set parameters for Gibbs sampling
+burnin <- 1000
+iter <- 4000
+thin <- 100
+seed <- 40
+
+#Number of Topics
+k <- 20
+
+#Run LDA using Gibbs sampling
+lda <-LDA(dtm,k, method='Gibbs', 
+             control=list(seed = seed, burnin = burnin, iter = iter, thin = thin))
+```
+
+Before running we need to run a helper function (I'll explain in a second):
+
+```{r}
+topicmodels_json_ldavis <- function(fitted, dfm, dtm){
+  # Required packages
+  library(topicmodels)
+  library(dplyr)
+  library(stringi)
+  library(quanteda)
+  library(LDAvis)
+  library(tm)
+  
+  # Find required quantities
+  phi <- posterior(fitted)$terms %>% as.matrix
+  theta <- posterior(fitted)$topics %>% as.matrix
+  vocab <- colnames(phi)
+  
+  doc_length <- ntoken(dfm[rownames(dtm)])
+  
+  temp_frequency <- inspect(dtm)
+  freq_matrix <- data.frame(ST = colnames(temp_frequency),
+                            Freq = colSums(temp_frequency))
+  rm(temp_frequency)
+  
+  # Convert to json
+  json_lda <- LDAvis::createJSON(phi = phi, theta = theta,
+                                 vocab = vocab,
+                                 doc.length = doc_length,
+                                 term.frequency = freq_matrix$Freq)
+  
+  return(json_lda)
+}
+```
+
+Let's explore the results using the `terms` function.
+
+```{r, results = 'hide'}
+#Create Json for LDAVis
+json <- topicmodels_json_ldavis(lda, myCorpus, dtm)
+new.order <- RJSONIO::fromJSON(json)$topic.order
+```
+
+```{r}
+term <- terms(lda, 10)
+term <- term[,new.order]
+colnames(term) <- paste("Topic",1:20)
+term
+```
+
+We can save the topic names as the top 10 words per topic:
+
+```{r}
+topic.names <- apply(term, MARGIN = 2, paste, collapse = ", ")
+```
+
+Last, we can use the LDAvis package to create a Shiny app for our results:
+
+```{r, eval=FALSE}
+serVis(json, out.dir = 'federalist', open.browser = TRUE)
+```
+
+## Step 12: Topic Labeling
+
+```{r}
+# Name (label) the topics
+names <- c("Legalese","War/National Security","Enlightenment","House Term Period","Military & Army","Judicial Branch","Public Opinion","Republican Majority","Clauses","Known Issues","Senate","Conduct of Man","Revenue","Local Rights","Convention","Checks & Balances","Foreign Assets","History","Property Rights","States Rights")
+
+## Topic Cluster heatmaps
+
+# to get topic probabilities per document
+postlist <- posterior(lda)
+probtopics <- data.frame(postlist$topics[,new.order])
+heat_data <- as.matrix(probtopics)
+
+colnames(heat_data) <- names
+levels(papers$author)[2] <- "BOTH"
+levels(papers$author)[3] <- "???"
+name <- paste(papers$number,". ",papers$author)
+```
+
+## Step 13: Topic Visualization per Paper
+
+```{r}
+library(d3heatmap)
+
+# Cluster topics (rows)
+d3heatmap(data.frame(heat_data), dendrogram = "col", scale = "col", 
+           labRow = name, cexRow=.8, cexCol=.8, k_row = 5)
+
+# Cluster topics (rows) and papers (columns)
+d3heatmap(data.frame(heat_data), scale = "col", 
+            labRow = name, cexRow=.8, cexCol=.8, k_row = 5)
+```

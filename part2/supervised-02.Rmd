@@ -20,11 +20,11 @@ setwd("~/Dropbox/Federalist-Papers-Workshop")  #Linux
 papers <- read.csv("./data/federalist.csv", stringsAsFactors = F)
 
 #		train/test: limit to Hamilton/Mad documents (drop Jay and Ham&Madison papers)
-train <- which(papers$auth=="HAMILTON" | papers$auth=="MADISON")
-length(train)	# 65
+known.papers <- which(papers$auth=="HAMILTON" | papers$auth=="MADISON")
+length(known.papers)	# 65
 
-test <- which(papers$auth=="DISPUTED")
-length(test)	# 12
+disputed <- which(papers$auth=="DISPUTED")
+length(disputed)	# 12
 
 library(quanteda)
 
@@ -47,28 +47,32 @@ docvars(myCorpus, "Author") <- papers$author
 # summarize the documents
 summary(myCorpus, 5)
 
-stopWords <- c("will","one","two","may","less", "well","might","without","small","single",
-"several","however","must","number","part","upon","consider","particular","place","true","shall","often",
-"former","latter","want","can","everything","every","different","either","yet","made","now","publius",
-"therefore","first","second","third","though","another","found","within","even","far","just","also",
-"said","ever","three","four","still","little","federal","members","national","union","united","general",
-"government","governments","power","powers","state","states","people","constitution","constitutions")
+stopWords <- c("will","one","two","may","less", "well","might","without","small","single", "several","however","must","number","part","upon","consider","particular","place","true","shall","often","former","latter","want","can","everything","every","different","either","yet","made","now","publius","therefore","first","second","third","though","another","found","within","even","far","just","also","said","ever","three","four","still","little","federal","members","national","union","united","general","government","governments","power","powers","state","states","people","constitution","constitutions")
 
 myDfm <- dfm(myCorpus, ignoredFeatures = c(stopwords("english"),stopWords), stem = T, ngrams = c(1,3))
-myDfm <- trim(myDfm, minCount=5, minDoc=5)
+
+myDfm <- trim(myDfm, minCount=10, minDoc=5)
 ```
 
-## Step 7: Train Ridge Regression
+## Step 7: Data Partitioning & Train Ridge Regression
+
+In machine learning, the most common problem is overfitting. Overfitting is when the model accidentally fits random noise into the model results. The problem then comes when applying the model to a new or out-of-sample dataset. If a model is overfit, it will likely perform well on the original model, or training, dataset but will perform poorly on the out-of-sample dataset.
+
+```{r}
+set.seed(123)
+training <- sample(1:length(known.papers), floor(.80 * length(known.papers)))
+test <- (1:length(known.papers))[1:length(known.papers) %in% training == FALSE]
+```
 
 This part below we'll use ridge regression to determine what are the most "predictive" words for either Madison or Hamilton. This part uses material originally from [Pablo Barbera's EUI Text Workshop](https://github.com/pablobarbera/eui-text-workshop/blob/master/02-supervised/01-supervised.Rmd).
 
 ```{r}
-hamilton.author <- ifelse(papers$author[train]=="HAMILTON",1,0)
+training.author <- ifelse(papers$author[training]=="HAMILTON",1,0)
 
 library(glmnet)
 require(doMC)
 registerDoMC(cores=3)
-ridge <- cv.glmnet(myDfm[train,], hamilton.author, 
+ridge <- cv.glmnet(myDfm[training,], training.author, 
     family="binomial", alpha=0, nfolds=5, parallel=TRUE,
     type.measure="deviance")
 plot(ridge)
@@ -76,7 +80,7 @@ plot(ridge)
 
 This plots a range of lambda values to determine the most appropriate value to use.
 
-## Step 7: Model Evaluation
+## Step 8: Model Evaluation
 
 Let's now predict the accuracy of the model on the training dataset.
 
@@ -96,34 +100,80 @@ recall <- function(ypred, y){
     tab <- table(ypred, y)
     return(tab[2,2]/(tab[1,2]+tab[2,2]))
 }
-# computing predicted values
-preds <- predict(ridge, myDfm[train,], type="response") > mean(hamilton.author)
-# confusion matrix
-table(preds, hamilton.author)
-# performance metrics
-accuracy(preds, hamilton.author)
-precision(preds, hamilton.author)
-recall(preds, hamilton.author)
 ```
 
-So we find that the model completely predicts the training dataset. Usually, we'd be more interested in the validation dataset accuracy; however, since we have so few training observations, we only consider the training dataset. Alternatively, we could use cross-validation methods (e.g., k-fold). For simplicity, we won't concern ourselves with this consideration. However, for more sophisticated research, it would strengthen the model's case by using cross-validation.
-
-We can now predict our out-of-sample (disputed) papers:
+Let's predict the training dataset.
 
 ```{r}
-disputed.papers <- predict(ridge, myDfm[test,], type="response") > mean(hamilton.author)
+# computing predicted values
+preds <- predict(ridge, myDfm[training,], type="response") > mean(training.author)
+# confusion matrix
+table(preds, training.author)
+# performance metrics
+accuracy(preds, training.author)
+precision(preds, training.author)
+recall(preds, training.author)
+```
+
+So far so good. Out of the 52 training papers, the model was perfect.
+
+But let's now see how the model does for the out-of-sample dataset.
+
+```{r}
+test.author <- ifelse(papers$author[test]=="HAMILTON",1,0)
+
+# computing predicted values
+preds <- predict(ridge, myDfm[test,], type="response") > mean(test.author)
+# confusion matrix
+table(preds, test.author)
+# performance metrics
+accuracy(preds, test.author)
+precision(preds, test.author)
+recall(preds, test.author)
+```
+
+Good but not perfect. There were 13 out of sample observations and the model correctly 12 out of 13 (92.3%).   
+
+So we find that the model completely predicts the training dataset. Usually, we'd be more interested in the validation dataset accuracy; however, since we have so few training observations, we only consider the training dataset.
+
+We can now predict our out-of-sample (disputed) papers.
+
+First, predict the likelihood that the paper was written by Hamilton:
+
+```{r}
+predict(ridge, myDfm[disputed,], type="response")
+```
+
+For the training dataset, what was the ratio of Hamilton to Madison papers?
+
+```{r}
+mean(c(training.author,test.author))
+```
+
+Therefore, if we choose all papers that have a predicted probability below the training Hamilton paper we predict that...
+
+```{r}
+disputed.papers <- predict(ridge, myDfm[disputed,], type="response") > mean(c(training.author,test.author))
 
 disputed.papers <- ifelse(disputed.papers == 1, "HAMILTON", "MADISON")
 ```
 
-These results imply that contrary to earlier research, that suggests all of the papers were written by Madison, our model predict four of the twelve papers are predicted to be written by Hamilton.
+Similar to earlier research that attributed all papers to Madison (Mosteller & Wallace 1963), our model predicts Madison wrote all twelve of the disputed papers.
+
+The model's covariates (X or independent variables) are stemmed words. 
+
+We'll choose the best lambda value (regression run) and explore five of the beta's.
 
 ```{r}
 # from the different values of lambda, let's pick the best one
 best.lambda <- which(ridge$lambda==ridge$lambda.min)
 beta <- ridge$glmnet.fit$beta[,best.lambda]
 head(beta)
+```
 
+Let's now explore the top 30 words per author (i.e. most negative and most positive beta coefficients).
+
+```{r}
 ## identifying predictive features
 df <- data.frame(coef = as.numeric(beta),
                 word = names(beta), stringsAsFactors=F)
@@ -137,3 +187,15 @@ paste(df$word[1:30], collapse=", ")
 ```
 
 These plots show the top 30 words that the model predicts indicates Madison (first 30, i.e. most negative coefficient) or Hamilton (bottom 30, i.e. most positive coefficient).
+
+## Moving Forward
+
+How robust are the results? 
+
+What happens if you alter the pre-processing steps, like: 
+
+* add or remove more stop words
+
+* remove stemming
+
+* remove more or less sparse words (currently have to be 10 times and in 5 docs)
