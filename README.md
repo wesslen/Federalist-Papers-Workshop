@@ -37,8 +37,6 @@ The data is from Robert Stine's [Text Mining course website](http://www-stat.wha
 ## Instructions
                                                             
 To start, download the contents in this repository by clicking the "Download Zip" button on the right side. Save the zip file and extract the contents. Then open the respective RMarkdown (.Rmd)  file in the respective folder in R Studio.
-                                                             
-Part 1 covers basic text mining preparation. Part 2 covers supervised learning. Part 3 covers unsupervised learning, specifically LDA (topic modeling).
 
 ## R Packages
 
