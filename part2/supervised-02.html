@@ -167,7 +167,7 @@ summary(myCorpus, 5)</code></pre>
 ##  text5   552   1339         1      5      JAY
 ## 
 ## Source:  /home/whitesox/Dropbox/Federalist-Papers-Workshop/* on x86_64 by whitesox
-## Created: Sat Oct  1 13:11:25 2016
+## Created: Mon Oct  3 20:04:12 2016
 ## Notes:</code></pre>
 <pre class="r"><code>stopWords &lt;- c(&quot;will&quot;,&quot;one&quot;,&quot;two&quot;,&quot;may&quot;,&quot;less&quot;, &quot;well&quot;,&quot;might&quot;,&quot;without&quot;,&quot;small&quot;,&quot;single&quot;, &quot;several&quot;,&quot;however&quot;,&quot;must&quot;,&quot;number&quot;,&quot;part&quot;,&quot;upon&quot;,&quot;consider&quot;,&quot;particular&quot;,&quot;place&quot;,&quot;true&quot;,&quot;shall&quot;,&quot;often&quot;,&quot;former&quot;,&quot;latter&quot;,&quot;want&quot;,&quot;can&quot;,&quot;everything&quot;,&quot;every&quot;,&quot;different&quot;,&quot;either&quot;,&quot;yet&quot;,&quot;made&quot;,&quot;now&quot;,&quot;publius&quot;,&quot;therefore&quot;,&quot;first&quot;,&quot;second&quot;,&quot;third&quot;,&quot;though&quot;,&quot;another&quot;,&quot;found&quot;,&quot;within&quot;,&quot;even&quot;,&quot;far&quot;,&quot;just&quot;,&quot;also&quot;,&quot;said&quot;,&quot;ever&quot;,&quot;three&quot;,&quot;four&quot;,&quot;still&quot;,&quot;little&quot;,&quot;federal&quot;,&quot;members&quot;,&quot;national&quot;,&quot;union&quot;,&quot;united&quot;,&quot;general&quot;,&quot;government&quot;,&quot;governments&quot;,&quot;power&quot;,&quot;powers&quot;,&quot;state&quot;,&quot;states&quot;,&quot;people&quot;,&quot;constitution&quot;,&quot;constitutions&quot;)
 
@@ -360,8 +360,8 @@ head(df[,c(&quot;coef&quot;, &quot;word&quot;)], n=30)</code></pre>
 <pre><code>## [1] &quot;presumpt, odious, indic, humor, immens, delin, readili, hesit, conclud, matur, destruct, avaric, empow, economi, util, apt, pernici, vigor, wide, habit, caution, resembl, experienc, provinc, demonstr, particip, suffic, ration, ingredi, absurd&quot;</code></pre>
 <p>These plots show the top 30 words that the model predicts indicates Madison (first 30, i.e. most negative coefficient) or Hamilton (bottom 30, i.e. most positive coefficient).</p>
 </div>
-<div id="moving-forward" class="section level2">
-<h2>Moving Forward</h2>
+<div id="advanced-questions" class="section level2">
+<h2>Advanced Questions:</h2>
 <p>How robust are the results?</p>
 <p>What happens if you alter the pre-processing steps, like:</p>
 <ul>
@@ -369,6 +369,7 @@ head(df[,c(&quot;coef&quot;, &quot;word&quot;)], n=30)</code></pre>
 <li><p>remove stemming</p></li>
 <li><p>remove more or less sparse words (currently have to be 10 times and in 5 docs)</p></li>
 </ul>
+<p>Would a different model (e.g. Naive Bayes) perform similarily?</p>
 </div>
 
 

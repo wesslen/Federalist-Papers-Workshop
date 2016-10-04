@@ -188,7 +188,7 @@ paste(df$word[1:30], collapse=", ")
 
 These plots show the top 30 words that the model predicts indicates Madison (first 30, i.e. most negative coefficient) or Hamilton (bottom 30, i.e. most positive coefficient).
 
-## Moving Forward
+## Advanced Questions:
 
 How robust are the results? 
 
@@ -199,3 +199,5 @@ What happens if you alter the pre-processing steps, like:
 * remove stemming
 
 * remove more or less sparse words (currently have to be 10 times and in 5 docs)
+
+Would a different model (e.g. Naive Bayes) perform similarily?

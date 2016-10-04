@@ -142,6 +142,8 @@ Last, we can use the LDAvis package to create a Shiny app for our results:
 serVis(json, out.dir = 'federalist', open.browser = TRUE)
 ```
 
+To view this app, [click here](https://htmlpreview.github.io/?https://github.com/wesslen/Federalist-Papers-Workshop/blob/master/federalist/index.html).
+
 ## Step 12: Topic Labeling
 
 ```{r}
@@ -163,7 +165,7 @@ name <- paste(papers$number,". ",papers$author)
 
 ## Step 13: Topic Visualization per Paper
 
-```{r}
+```{r, fig.width=6, fig.height=9}
 library(d3heatmap)
 
 # Cluster topics (rows)
@@ -173,4 +175,52 @@ d3heatmap(data.frame(heat_data), dendrogram = "col", scale = "col",
 # Cluster topics (rows) and papers (columns)
 d3heatmap(data.frame(heat_data), scale = "col", 
             labRow = name, cexRow=.8, cexCol=.8, k_row = 5)
+```
+
+## Advanced Topics
+
+What is the right number of topics to use?
+
+* Is it better that topics are interpretable?
+
+* Or is it better that topics are predictive?
+
+[Chang et al (2009)](https://www.cs.princeton.edu/~blei/papers/ChangBoyd-GraberWangGerrishBlei2009a.pdf) finds that these two competing objectives may end up with conflicting results: "Topic models which perform better on held-out likelihood may infer
+less semantically meaningful topics".
+
+If your answer is the more interpretable topics, then you can simply alter assumptions and rerun until you're satisfied. 
+
+If instead you want the most predictive, you will need the `cvTools` package (not part of the original libraries) and to run the following script (note the user-defined functions in the `functions.R` file):
+
+```{r, results='hide'}
+# install.packages("cvTools")
+require(cvTools)
+source("../part3/functions.R")
+
+K <- c(10, 20, 35, 50, 75, 100)
+
+results <- list()
+
+i = 1
+for (k in K){
+    cat("\n\n\n##########\n ", k, "topics", "\n")
+    res <- cvLDA(k, dtm)
+    results[[i]] <- res
+    i = i + 1
+}
+```
+
+```{r}
+topicPlots(results,K)
+```
+
+Another exercise you can consider is to measure is the correlation between the topics.
+
+One way to approach this is to visualize the correlation between topic-word probabilities. Check out this [blog post](https://wesslen.github.io/text%20mining/topic-networks/) for more details.
+
+For this, I create another user-defined function called `corrPlot` in the `functions.R` file.
+
+```{r}
+probterms <- data.frame(t(postlist$terms[new.order,]))
+corrPlot(probterms, thres = 0.08)
 ```
