@@ -22,7 +22,7 @@ The next step is to install the R libraries (optional - only necessary if this i
 
 Most of the libraries are downloaded from CRAN. CRAN is an open-source archive of R packages. Packages can be installed through CRAN with the "install.packages()" command.
 
-Note, some packages (e.g. old or very new) sometimes may not be available on CRAN. In such cases, additional steps may be required to download them.
+Note, some packages (e.g. old or very new) sometimes may not be available on CRAN. In such cases, additional steps (e.g. pull from Github) may be required to download them.
 
 ```{r}
 #install.packages("quanteda")
@@ -81,7 +81,16 @@ docvars(myCorpus, "Author") <- papers$author
 summary(myCorpus, 5)
 ```
 
-Let's plot the number of tokens (word count) for each of the papers.
+Now, let's analyze the text. First, let's examine word counts (total and unique):
+
+```{r}
+par(mfrow=c(2,1))
+hist(ntoken(papers$text), breaks = 100, main = "Number of Tokens per Page (before pre-processing)")
+hist(ntype(papers$text), breaks = 100,  main = "Number of Unique Words per Page (before pre-processing)")
+par(mfrow=c(1,1))
+```
+
+We can also plot them across time (so x-axis is what number paper it is):
 
 ```{r}
 tokenInfo <- summary(myCorpus)
@@ -90,36 +99,91 @@ if (require(ggplot2))
     ggplot(data=tokenInfo, aes(x=Number, y=Tokens, group=1)) + geom_line() + geom_point()
 ```
 
-Let's now start the pre-processing. We'll use the corpus to create a dfm (document-feature matrix) including removing common stop words.
+### Pre-Processing
+
+Let's now start the pre-processing. 
+
+First, let's create a dfm (document-feature matrix) and look at the top 20 words:
 
 ```{r}
-stopWords <- c("will","one","two","may","less", "well","might","without","small","single",
-"several","however","must","number","part","upon","consider","particular","place","true","shall","often","former","latter","want","can","everything","every","different","either","yet","made","now","publius","therefore","first","second","third","though","another","found","within","even","far","just","also","said","ever","three","four","still","little")
+myDfm <- dfm(myCorpus)
+topfeatures(myDfm, 20)
+barplot(topfeatures(myDfm, 20), las = 2, main ="Most frequent Words",ylab = "Word frequencies")
+```
+
+This is not surprising. The most common words are very "common" words like "the", "of", "to", "and". These words do not provide a lot of meaning as they're used so frequently.
+
+Let's instead use a common list of stopwords and rerun our initial counts.
+
+```{r}
+myDfm <- dfm(myCorpus, ignoredFeatures = c(stopwords("english")))
+topfeatures(myDfm, 20)
+barplot(topfeatures(myDfm, 20), las = 2, main ="Most frequent Words",ylab = "Word frequencies")
+```
+
+This is much better but not great. Let's now use a word cloud to look beyond the top 20 words:
+
+```{r}
+library(RColorBrewer)
+plot(myDfm, max.words = 100, colors = brewer.pal(6, "Dark2"), random.order = F, scale = c(8, .5))	
+```
+
+So the word "will", "states", "government" and others are dominating. Some words may have importance (e.g. government or states being part of the United States) while others may not (e.g. one, two, well, less).
+
+Usually, at this point, it would be good to add more stop words and rerun our preprocessing.
+
+Let's add a longer list of words and rerun our counts:
+
+```{r}
+stopWords <- c("will","one","two","may","less","well","might","without","small","single","several","however","must","number","part","upon","consider","particular","place","true","shall","often","former","latter","want","can","everything","every","different","either","yet","made","now","publius","therefore","first","second","third","though","another","found","within","even","far","just","also","said","ever","three","four","still","little")
 
 myDfm <- dfm(myCorpus, ignoredFeatures = c(stopwords("english"),stopWords), stem = F)
 
 topfeatures(myDfm, 20)
+plot(myDfm, max.words = 100, colors = brewer.pal(6, "Dark2"), random.order = F, scale = c(8, .5))
 ```
 
-## Step 4: Exploratory Analysis with Word Cloud, Frequency Plot and Clustering
+Good. Now we're focusing more on specific words that relate to concepts rather than are indicative of writing style. Let's keep this preprocessing and move to exploring the documents.
 
-The first step creates a word cloud.
+## Step 4: Exploratory Analysis with Similarity, Word Associations/Clustering and Comparison Word Cloud
+
+First, let's consider an application to measure the similarity of each paper.
+
+### Application: Document Similarity
+
+Let's suppose you are an American studies history teacher. Your favorite Federalist paper is [Federalist #70](https://en.wikipedia.org/wiki/Federalist_No._70). 
+
+In this paper titled "The Executive Department Further Considered" written by Alexander Hamilton, Hamilton argues for a one-man executive branch led by the president.
+
+Let's now assume you want to recommend to your students the Federalist paper that is most closely related to Federalist #70. How can you do this?
+
+You can use a **similarity** measure that quantifies how similar Federalist #70 is to all of the papers (by the word counts) and rank order all papers to find the most similar.
+
+In the `quanteda` package, we use the the function `similarity` to find the top 5 most similar papers:
 
 ```{r}
-library(RColorBrewer)
-
-plot(myDfm, max.words = 100, colors = brewer.pal(6, "Dark2"), scale = c(8, .5))			
+similarity(myDfm, "text70", n=5, margin="documents", method = "correlation")
 ```
 
-Remember, our task is to predict the disputed Federalist Papers. One exploratory technique we can use is the *comparison* word cloud, which compares the relative frequency of words by the author.
+From this measure, we find that Federalist #77 is most similar to Federalist #70. 
 
-To create a comparison word cloud, we need to create a grouped dfm using the `group` parameter.
+There's also the great `dotchart` that can plot our results. Let's instead explore the top 20 papers like Federalist #70.
 
 ```{r}
-myGroupDfm <- dfm(myCorpus, groups = "Author", ignoredFeatures = c(stopwords("english"),stopWords), stem = F)
+paper70sim <- similarity(myDfm, "text70", n=20, margin="documents", method = "correlation")
 
-plot(myGroupDfm, comparison = T, max.words = 100, colors = brewer.pal(6, "Dark2"), scale = c(8, .5))	
+dotchart(paper70sim$`text70`, xlab = "Word Correlation")
 ```
+
+Further, correlation is but one measure of similarity. Other common ones like cosine similarity, Hellinger distance and (extended) Jaccard index are also available in the function.
+
+```{r}
+similarity(myDfm, "text70", n=5, margin="documents", method = "cosine")
+similarity(myDfm, "text70", n=5, margin="documents", method = "Hellinger")
+similarity(myDfm, "text70", n=5, margin="documents", method = "eJaccard")
+```
+
+### Word Associations
 
 Next, I analyze word associations for a sample of words. The "findAssocs" function will take a given word (e.g., "germanic") and given an association parameter (e.g., 0.85), and return the words that are in at least x% (association parameter) of the papers with the given word.
 
@@ -134,9 +198,7 @@ To run this analysis, we'll need two non-CRAN packages.
 library(graph); library(Rgraphviz); 
 ```
 
-So for example, the first call to the function will return all words that are in at least 85% of the papers that contain the word "germanic". This step is helpful because it can identify words that (1) tend to form topics/clusters and/or (2) words that make up a larger bigram or trigram entity structure.
-
-The plot provides words that (1) have a frequency larger than 200 and show correlations for words with at least a 25% association. This plot too is helpful for determining clusters and/or bigram/trigram structure for the most common words.
+So for example, the first call to the function will return all words that are in at least 70% of the papers that contain the word "commerce". 
 
 ```{r}
 DTM <- as.DocumentTermMatrix(myDfm)
@@ -148,7 +210,13 @@ findAssocs(DTM, "debt", 0.8)
 findAssocs(DTM, "slavery", 0.7)
 findAssocs(DTM, "montesquieu", 0.65)
 findAssocs(DTM, "germanic", 0.85)
+```
 
+This step is helpful because it can identify words that (1) tend to form topics/clusters and/or (2) words that make up a larger bigram or trigram entity structure.
+
+The plot provides words that (1) have a frequency larger than 200 and show correlations for words with at least a 25% association. This plot too is helpful for determining clusters and/or bigram/trigram structure for the most common words.
+
+```{r}
 #		queries of co-occurences
 freq.terms <- findFreqTerms(DTM, lowfreq = 200)
 term.freq <- rowSums(as.matrix(DTM))
@@ -158,7 +226,22 @@ plot(DTM, term = freq.terms, corThreshold = 0.25, weighting = T)
 dev.off()
 ```
 
-The next step uses [hiearchal clustering](https://en.wikipedia.org/wiki/Hierarchical_clustering) to identify clusters/patterns in words that tend to co-occur together.
+### Word Clustering
+
+The next step uses [hierarchal clustering](https://en.wikipedia.org/wiki/Hierarchical_clustering) to identify clusters/patterns in words that tend to co-occur together.
+
+```{r}
+# word dendrogram with tf-idf weighting
+wordDfm <- sort(weight(myDfm, "tfidf"))
+wordDfm <- t(wordDfm)[1:50,]  # because transposed
+wordDistMat <- dist(wordDfm)
+wordCluster <- hclust(wordDistMat)
+plot(wordCluster, xlab="", main="tf-idf Frequency weighting")
+```
+
+### Document Clustering
+
+Further, we can transpose the matrix and cluster instead on the documents to find how similar the documents are to one another.
 
 ```{r}
 myDfm <- trim(myDfm, minCount=5, minDoc=3)
@@ -170,16 +253,37 @@ myCluster <- hclust(myDistMat)
 plot(myCluster, xlab = "", sub = "", main = "Euclidean Distance on Normalized Token Frequency")
 ```
 
-## Step 5: Additional Stop Words, Stemming and Bigrams
+### Comparison Word Clouds
 
-As seen previously, the results are largely dominated by several words that are very frequent throughout the entire corpus (words like government or state). Worse, several of these words mean the same thing but are in different forms (e.g., government and governments). Also, several combination of words make up entities that don't mean the same when the words are separated (e.g. Great + Britain, or New + York). Without controlling for these complexities, initial text mining analysis can be vague. In order to improve our results, I rerun pre-processing steps to remove common stop words, stem words and add in bigrams into the analysis.
+Remember, our ultimate task is to predict the disputed Federalist Papers. One exploratory technique we can use is the *comparison* word cloud, which compares the relative frequency of words by the author.
 
-After running these steps, rerun the visualizations and note the differences.
+First, since we're only interested in papers written by Hamilton and Madison, let's remove John Jay's papers and the papers written by both Hamilton and Madison.
+
+```{r}
+newCorpus <- subset(myCorpus, Author %in% c("HAMILTON","MADISON","DISPUTED"))
+```
+
+To create a comparison word cloud, we need to create a grouped dfm using the `group` parameter.
+
+```{r}
+myGroupDfm <- dfm(newCorpus, groups = "Author", ignoredFeatures = c(stopwords("english"),stopWords), stem = F)
+
+plot(myGroupDfm, comparison = T, max.words = 100, colors = brewer.pal(6, "Dark2"), random.order = F, scale = c(8, .5))	
+```
+
+## Advanced Steps: Additional Stop Words, Stemming and Bigrams
+
+As seen previously, the results are largely dominated by several words that are very frequent throughout the entire corpus (words like government or state). Worse, several of these words mean the same thing but are in different forms (e.g., government and governments). 
+
+Also, several combination of words make up entities that don't mean the same when the words are separated (e.g. Great + Britain, or New + York). Without controlling for these complexities, initial text mining analysis can be vague. 
+
+In order to improve our results, I reran pre-processing steps to remove common stop words, stem words and add in bigrams into the analysis.
+
+After running these steps, consider rerunning the visualizations and note the differences. How important is pre-processing?
 
 ```{r}
 # Additional Stop words
-stopWords <- c(stopWords,"federal","members","national","union","united","general","government","governments",
-"power","powers","state","states","people","constitution","constitutions")
+stopWords <- c(stopWords,"federal","members","national","union","united","general","government","governments","power","powers","state","states","people","constitution","constitutions")
 
 myDfm <- dfm(myCorpus, ignoredFeatures = c(stopwords("english"),stopWords), stem = T, ngrams = c(1,3))
 
